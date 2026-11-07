@@ -221,6 +221,21 @@ class common_chat_schema_builder {
         return node;
     }
 
+    common_chat_schema_ptr build_number(const common_json & schema, const std::string & path) {
+        auto node = std::make_unique<common_chat_schema_number>();
+        if (schema.contains("minimum")) {
+            node->minimum = get_bound(schema, "minimum", path, /* round_up */ true);
+        } else if (schema.contains("exclusiveMinimum")) {
+            node->minimum = get_bound(schema, "exclusiveMinimum", path, /* round_up */ false) + 1;
+        }
+        if (schema.contains("maximum")) {
+            node->maximum = get_bound(schema, "maximum", path, /* round_up */ false);
+        } else if (schema.contains("exclusiveMaximum")) {
+            node->maximum = get_bound(schema, "exclusiveMaximum", path, /* round_up */ true) - 1;
+        }
+        return node;
+    }
+
     common_chat_schema_ptr build_integer(const common_json & schema, const std::string & path) {
         auto node = std::make_unique<common_chat_schema_integer>();
         if (schema.contains("minimum")) {
@@ -309,6 +324,9 @@ class common_chat_schema_builder {
             if (schema.contains("pattern") || schema.contains("minLength") || schema.contains("maxLength") || get_format(schema, path) != common_chat_schema::FORMAT_NONE) {
                 return build_string(schema, path);
             }
+            if (schema.contains("minimum") || schema.contains("maximum") || schema.contains("exclusiveMinimum") || schema.contains("exclusiveMaximum")) {
+                return build_integer(schema, path);
+            }
             return std::make_unique<common_chat_schema_any>();
         }
         if (type_name == "object") {
@@ -330,7 +348,7 @@ class common_chat_schema_builder {
             return build_integer(schema, path);
         }
         if (type_name == "number") {
-            return std::make_unique<common_chat_schema_number>();
+            return build_number(schema, path);
         }
         if (type_name == "boolean") {
             return std::make_unique<common_chat_schema_boolean>();

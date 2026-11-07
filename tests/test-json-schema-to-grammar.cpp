@@ -1302,6 +1302,34 @@ static void test_all(const std::string & title, std::function<void(const TestCas
 
     test({
         SUCCESS,
+        "allOf with single integer",
+        R"""({
+            "allOf": [{"type": "integer"}]
+        })""",
+        R"""(
+            integral-part ::= [0] | [1-9] [0-9]{0,15}
+            root ::= ("-"? integral-part)
+            space ::= | " " | "\n"{1,2} [ \t]{0,20}
+        )"""
+    });
+
+    test({
+        SUCCESS,
+        "allOf with integer and number range",
+        R"""({
+            "allOf": [
+                {"type": "integer"},
+                {"type": "number", "minimum": 0, "maximum": 100}
+            ]
+        })""",
+        R"""(
+            root ::= ([0-9] | ([1-8] [0-9] | [9] [0-9]) | "100")
+            space ::= | " " | "\n"{1,2} [ \t]{0,20}
+        )"""
+    });
+
+    test({
+        SUCCESS,
         "allOf with multiple enum schemas",
         R"""({
             "allOf": [

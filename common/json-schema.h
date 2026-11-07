@@ -139,6 +139,9 @@ struct common_chat_schema_boolean : common_chat_schema {
 };
 
 struct common_chat_schema_number : common_chat_schema {
+    int64_t minimum = INT64_MIN;
+    int64_t maximum = INT64_MAX;
+
     node_kind kind() const override { return KIND_NUMBER; }
 };
 

@@ -860,6 +860,8 @@ public:
         std::unordered_set<std::string> required;
         std::vector<std::pair<std::string, const common_chat_schema *>> properties;
         std::map<std::string, size_t> enum_values;
+        std::vector<const common_chat_schema *> other_schemas;
+
         std::function<void(const common_chat_schema &, bool, int)> add_component = [&](const common_chat_schema & comp, bool is_required, int depth) {
             if (depth >= COMMON_RECURSIVE_LIMIT) {
                 throw std::invalid_argument("JSON schema is nested more than " + std::to_string(COMMON_RECURSIVE_LIMIT) + " levels deep");
@@ -879,6 +881,8 @@ public:
                 for (const auto & v : as<common_chat_schema_enum>(comp).values) {
                     enum_values[_generate_constant_rule(v)] += 1;
                 }
+            } else if (comp.kind() != common_chat_schema::KIND_ANY) {
+                other_schemas.push_back(&comp);
             }
         };
         for (const auto & child : schema.children) {
@@ -899,6 +903,69 @@ public:
             }
             if (!enum_intersection.empty()) {
                 return _add_rule(rule_name, "(" + string_join(enum_intersection, " | ") + ")");
+            }
+        }
+        if (!properties.empty()) {
+            return _add_rule(rule_name, _build_object_rule(properties, required, name, nullptr));
+        }
+        if (!other_schemas.empty()) {
+            bool has_integer = false;
+            bool has_number = false;
+            int64_t int_min = std::numeric_limits<int64_t>::min();
+            int64_t int_max = std::numeric_limits<int64_t>::max();
+            for (const auto * s : other_schemas) {
+                if (s->kind() == common_chat_schema::KIND_INTEGER) {
+                    has_integer = true;
+                    const auto & i = as<common_chat_schema_integer>(*s);
+                    int_min = std::max(int_min, i.minimum);
+                    int_max = std::min(int_max, i.maximum);
+                } else if (s->kind() == common_chat_schema::KIND_NUMBER) {
+                    has_number = true;
+                    const auto & n = as<common_chat_schema_number>(*s);
+                    int_min = std::max(int_min, n.minimum);
+                    int_max = std::min(int_max, n.maximum);
+                }
+            }
+            if (has_integer) {
+                if (int_min == std::numeric_limits<int64_t>::min() && int_max == std::numeric_limits<int64_t>::max()) {
+                    return _visit_primitive(rule_name, "integer");
+                }
+                std::stringstream out;
+                out << "(";
+                build_min_max_int(int_min, int_max, out);
+                out << ")";
+                return _add_rule(rule_name, out.str());
+            }
+            if (has_number) {
+                return _visit_primitive(rule_name, "number");
+            }
+            bool has_string = false;
+            std::string pattern;
+            common_chat_schema::string_format format = common_chat_schema::FORMAT_NONE;
+            int min_length = 0;
+            int max_length = -1;
+            for (const auto * s : other_schemas) {
+                if (s->kind() == common_chat_schema::KIND_STRING) {
+                    has_string = true;
+                    const auto & str = as<common_chat_schema_string>(*s);
+                    if (pattern.empty()) pattern = str.pattern;
+                    if (format == common_chat_schema::FORMAT_NONE) format = str.format;
+                    min_length = std::max(min_length, str.min_length);
+                    if (str.max_length >= 0) {
+                        max_length = (max_length < 0) ? str.max_length : std::min(max_length, str.max_length);
+                    }
+                }
+            }
+            if (has_string) {
+                common_chat_schema_string merged_str;
+                merged_str.pattern = pattern;
+                merged_str.format = format;
+                merged_str.min_length = min_length;
+                merged_str.max_length = max_length;
+                return visit(merged_str, name);
+            }
+            if (other_schemas.size() == 1) {
+                return visit(*other_schemas[0], name);
             }
         }
         return _add_rule(rule_name, _build_object_rule(properties, required, name, nullptr));
